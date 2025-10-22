@@ -29,7 +29,7 @@
     authorized = hasToken();
     if (authorized) {
       await refreshNowPlaying();
-      pollId = setInterval(refreshNowPlaying, 2000);
+      pollId = setInterval(refreshNowPlaying, 1000);
     }
   });
 
