@@ -1,12 +1,12 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { browser } from '$app/environment';
-  import { login, hasToken, getCurrentlyPlaying, logout } from '$lib/spotify.js'; // removed handleCallback
+  import { redirectToAuthCodeFlow, hasToken, getCurrentlyPlaying, logout } from '$lib/spotify.js';
 
   let authorized = false;
   let nowPlaying = null;
   let error = null;
-  let pollId;
+  let nowPlayingUpdateInterval;
 
   function formatTime(ms) {
     const s = Math.floor((ms || 0) / 1000);
@@ -15,7 +15,7 @@
     return `${m}:${ss}`;
   }
 
-  async function refreshNowPlaying() {
+  async function updateNowPlaying() {
     try {
       nowPlaying = await getCurrentlyPlaying();
       error = null;
@@ -28,19 +28,18 @@
     if (!browser) return;
     authorized = hasToken();
     if (authorized) {
-      await refreshNowPlaying();
-      pollId = setInterval(refreshNowPlaying, 1000);
+      await updateNowPlaying();
+      nowPlayingUpdateInterval = setInterval(updateNowPlaying, 1000);
     }
   });
 
-  onDestroy(() => { if (pollId) clearInterval(pollId); });
+  onDestroy(() => { if (nowPlayingUpdateInterval) clearInterval(nowPlayingUpdateInterval); });
   
-  function connect() { login(); }
   function signout() {
     logout();
     authorized = false;
     nowPlaying = null;
-    if (pollId) { clearInterval(pollId); pollId = null; }
+    if (nowPlayingUpdateInterval) { clearInterval(nowPlayingUpdateInterval); nowPlayingUpdateInterval = null; }
   }
 </script>
 
@@ -53,7 +52,7 @@
     {#key nowPlaying.item.id}
       <div style="display:flex; gap:16px; align-items:center;">
         {#if nowPlaying.item.album?.images?.[0]}
-          <img src={nowPlaying.item.album.images[0].url} alt="album art" width="96" height="96" />
+          <img src={nowPlaying.item.album.images[0].url} alt="album art" width="396" height="396" />
         {/if}
         <div>
           <h2 style="margin:0">{nowPlaying.item.name}</h2>
@@ -79,5 +78,5 @@
   {/if}
 {:else}
   {#if error}<p style="color:#f55">{error}</p>{/if}
-  <button on:click={connect}>Connect Spotify</button>
+  <button on:click={redirectToAuthCodeFlow}>Connect Spotify</button>
 {/if}

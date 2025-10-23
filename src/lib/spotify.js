@@ -1,6 +1,6 @@
-// src/lib/spotify.js
 const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
-const REDIRECT_URI = import.meta.env.VITE_SPOTIFY_REDIRECT_URI;
+const REDIRECT_URI = import.meta.env.VITE_SPOTIFY_REDIRECT_URI 
+
 const SCOPES = [
   'user-read-email',
   'user-read-private',
@@ -8,162 +8,116 @@ const SCOPES = [
   'user-read-playback-state'
 ].join(' ');
 
-const K = {
-  ACCESS: "spotify_access_token",
-  REFRESH: "spotify_refresh_token",
-  EXPIRES_AT: "spotify_expires_at",
-  TOKEN_TYPE: "spotify_token_type",
-  STATE: "spotify_state",
-  VERIFIER: "spotify_code_verifier",
-  POST_LOGIN: "spotify_post_login_redirect",
-  ERROR: "spotify_error"
+const STORAGE_KEYS = {
+  ACCESS: 'spotify_access_token',
+  VERIFIER: 'spotify_code_verifier'
 };
-const isBrowser = () => typeof window !== "undefined";
 
-const b64url = a =>
-  btoa(String.fromCharCode(...new Uint8Array(a)))
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-const rand = (n = 64) => {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
-  const arr = isBrowser() ? crypto.getRandomValues(new Uint8Array(n)) : new Uint8Array(n);
-  return [...arr].map(x => chars[x % chars.length]).join("");
-};
-const sha256 = async (s) => crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+// SPOTIFY API TUTORIAL - 
+// https://developer.spotify.com/documentation/web-api/howtos/web-app-profile
+export async function redirectToAuthCodeFlow() {
+  const verifier = generateCodeVerifier(128);
+  const challenge = await generateCodeChallenge(verifier);
+  localStorage.setItem(STORAGE_KEYS.VERIFIER, verifier);
 
-export function hasToken() {
-  if (!isBrowser()) return false;
-  const t = localStorage.getItem(K.ACCESS);
-  const exp = +(localStorage.getItem(K.EXPIRES_AT) || 0);
-  return !!t && Date.now() < exp - 5000;
-}
-
-export function logout() {
-  if (!isBrowser()) return;
-  Object.values(K).forEach(k => localStorage.removeItem(k));
-}
-
-export async function login() {
-  if (!isBrowser()) return;
-  const state = rand(16);
-  const verifier = rand(64);
-  const challenge = b64url(await sha256(verifier));
-
-  localStorage.setItem(K.STATE, state);
-  localStorage.setItem(K.VERIFIER, verifier);
-  localStorage.setItem(K.POST_LOGIN, window.location.pathname || "/");
-
-  const q = new URLSearchParams({
-    response_type: "code",
+  const params = new URLSearchParams({
+    response_type: 'code',
     client_id: CLIENT_ID,
     redirect_uri: REDIRECT_URI,
     scope: SCOPES,
-    state,
-    code_challenge_method: "S256",
+    code_challenge_method: 'S256',
     code_challenge: challenge
   });
-  window.location.assign(`https://accounts.spotify.com/authorize?${q.toString()}`);
+
+  window.location.assign(`https://accounts.spotify.com/authorize?${params.toString()}`);
 }
 
-/** Handle redirect callback: exchange code -> tokens */
+// SPOTIFY API TUTORIAL 
+// https://developer.spotify.com/documentation/web-api/howtos/web-app-profile
+function generateCodeVerifier(length = 128) {
+  let text = '';
+  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  for (let i = 0; i < length; i++) {
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+  }
+  return text;
+}
+
+// SPOTIFY API TUTORIAL 
+// https://developer.spotify.com/documentation/web-api/howtos/web-app-profile
+async function generateCodeChallenge(codeVerifier) {
+  const data = new TextEncoder().encode(codeVerifier);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return btoa(String.fromCharCode.apply(null, [...new Uint8Array(digest)]))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+// SPOTIFY API TUTORIAL 
+// https://developer.spotify.com/documentation/web-api/howtos/web-app-profile
 export async function handleCallback() {
-  if (!isBrowser()) return false;
-  const p = new URLSearchParams(window.location.search);
-  const code = p.get("code");
-  const err = p.get("error");
-  if (!code && !err) return false;
+  const url = new URL(window.location.href);
+  const authorizationCode = url.searchParams.get('code');
+  const error = url.searchParams.get('error');
 
-  if (err) {
-    localStorage.setItem(K.ERROR, err);
+  if (!authorizationCode && !error) return false; // not a callback visit
+
+  if (error) {
+    history.replaceState({}, document.title, location.pathname);
     return true;
   }
 
-  const expected = localStorage.getItem(K.STATE);
-  if (expected && p.get("state") !== expected) {
-    localStorage.setItem(K.ERROR, "state_mismatch");
-    return true;
-  }
+  const verifier = localStorage.getItem(STORAGE_KEYS.VERIFIER) || '';
 
-  const body = new URLSearchParams({
-    client_id: CLIENT_ID,
-    grant_type: "authorization_code",
-    code,
-    redirect_uri: REDIRECT_URI,
-    code_verifier: localStorage.getItem(K.VERIFIER) || ""
-  });
+  const body = new URLSearchParams();
+  body.append('client_id', CLIENT_ID);
+  body.append('grant_type', 'authorization_code');
+  body.append('code', authorizationCode);
+  body.append('redirect_uri', REDIRECT_URI);
+  body.append('code_verifier', verifier);
 
-  const res = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  const response = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body
   });
 
-  const j = await res.json();
-  if (!res.ok) {
-    localStorage.setItem(K.ERROR, j.error || "token_exchange_failed");
-    return true;
+  const json = await response.json();
+  if (response.ok && json.access_token) {
+    localStorage.setItem(STORAGE_KEYS.ACCESS, json.access_token);
   }
 
-  const exp = Date.now() + (j.expires_in || 3600) * 1000;
-  if (j.access_token) localStorage.setItem(K.ACCESS, j.access_token);
-  if (j.refresh_token) localStorage.setItem(K.REFRESH, j.refresh_token);
-  localStorage.setItem(K.TOKEN_TYPE, j.token_type || "Bearer");
-  localStorage.setItem(K.EXPIRES_AT, String(exp));
-  localStorage.removeItem(K.ERROR);
-
-  if (history?.replaceState) history.replaceState({}, document.title, location.pathname);
+  history.replaceState({}, document.title, location.pathname);
   return true;
 }
 
-async function refresh() {
-  if (!isBrowser()) return false;
-  const rt = localStorage.getItem(K.REFRESH);
-  if (!rt) return false;
-
-  const body = new URLSearchParams({
-    client_id: CLIENT_ID,
-    grant_type: "refresh_token",
-    refresh_token: rt
-  });
-
-  const r = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body
-  });
-
-  const j = await r.json();
-  if (!r.ok) return false;
-
-  const exp = Date.now() + (j.expires_in || 3600) * 1000;
-  if (j.access_token) localStorage.setItem(K.ACCESS, j.access_token);
-  if (j.refresh_token) localStorage.setItem(K.REFRESH, j.refresh_token);
-  localStorage.setItem(K.TOKEN_TYPE, j.token_type || "Bearer");
-  localStorage.setItem(K.EXPIRES_AT, String(exp));
-  return true;
+// Minimal helpers used by your Svelte page
+export function hasToken() {
+  return !!localStorage.getItem(STORAGE_KEYS.ACCESS);
 }
 
-/** Minimal API helper: refresh token if needed, call Spotify API */
+export function logout() {
+  localStorage.removeItem(STORAGE_KEYS.ACCESS);
+  localStorage.removeItem(STORAGE_KEYS.VERIFIER);
+}
+
 export async function api(path) {
-  if (!isBrowser()) throw new Error("Browser only");
-  if (!hasToken()) {
-    const ok = await refresh();
-    if (!ok) throw new Error("Not authenticated");
-  }
-  const t = localStorage.getItem(K.ACCESS);
-  const res = await fetch(`https://api.spotify.com/v1${path}`, {
-    headers: { Authorization: `Bearer ${t}` }
+  const accessToken = localStorage.getItem(STORAGE_KEYS.ACCESS);
+  if (!accessToken) throw new Error('Not authenticated');
+
+  const response = await fetch(`https://api.spotify.com/v1${path}`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
   });
-  if (res.status === 204) return null;
-  if (!res.ok) {
-    let payload;
-    try { payload = await res.json(); }
-    catch { payload = { error: { status: res.status, message: res.statusText } }; }
-    throw new Error(JSON.stringify(payload));
+
+  if (response.status === 204) return null;
+  if (!response.ok) {
+    if (response.status === 401) localStorage.removeItem(STORAGE_KEYS.ACCESS);
+    throw new Error(`${response.status} ${response.statusText}`);
   }
-  return res.json();
+  return response.json();
 }
 
-export const getMe = () => api("/me");
-export const getCurrentlyPlaying = () => api("/me/player/currently-playing");
-
-// s
+// API ENDPOINT CALLS AKA FETCH REQUESTS 
+export const getMe = () => api('/me');
+export const getCurrentlyPlaying = () => api('/me/player/currently-playing');

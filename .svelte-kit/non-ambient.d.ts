@@ -37,6 +37,6 @@ declare module "$app/types" {
 		};
 		Pathname(): "/" | "/callback" | "/callback/";
 		ResolvedPathname(): `${"" | `/${string}`}${ReturnType<AppTypes['Pathname']>}`;
-		Asset(): "/robots.txt" | string & {};
+		Asset(): "/fonts/SF-Pro/SF-Pro-Text-Black.otf" | "/fonts/SF-Pro/SF-Pro-Text-Bold.otf" | "/fonts/SF-Pro/SF-Pro-Text-Heavy.otf" | "/fonts/SF-Pro/SF-Pro-Text-Medium.otf" | "/fonts/SF-Pro/SF-Pro-Text-Regular.otf" | "/fonts/SF-Pro/SF-Pro-Text-Semibold.otf" | "/fonts/SF-Pro/SF-Pro.ttf" | "/robots.txt" | string & {};
 	}
 }
