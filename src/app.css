@@ -1,4 +1,3 @@
-/* Alleen fontdefinities + een handige utility class/var */
 @font-face {
   font-family: "SF Pro";
   src: url("/fonts/SF-Pro/SF-Pro-Text-Black.otf") format("opentype");
@@ -50,10 +49,9 @@ html {
   background-color: #121212;
   font-family: var(--font-sans);
   overflow-x: hidden;
-  overflow-y: hidden;
+  /* overflow-y: hidden; */
 }
 
-/* ensure body also explicitly inherits the design font */
 body {
   font-family: var(--font-sans);
 }

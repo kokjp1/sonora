@@ -111,6 +111,10 @@
       "_shared.js"
     ]
   },
+  "src/lib/assets/favicon.svg": {
+    "file": "_app/immutable/assets/favicon.Fer-DQoJ.svg",
+    "src": "src/lib/assets/favicon.svg"
+  },
   "src/routes/+layout.svelte": {
     "file": "entries/pages/_layout.svelte.js",
     "name": "entries/pages/_layout.svelte",
@@ -120,7 +124,10 @@
       "_index2.js"
     ],
     "css": [
-      "_app/immutable/assets/_layout.2fbO4oo0.css"
+      "_app/immutable/assets/_layout.cLIddNrZ.css"
+    ],
+    "assets": [
+      "_app/immutable/assets/favicon.Fer-DQoJ.svg"
     ]
   },
   "src/routes/+page.svelte": {
@@ -133,7 +140,7 @@
       "_context.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.DvfM9fZ2.css"
+      "_app/immutable/assets/_page.ki0stSWo.css"
     ]
   },
   "src/routes/callback/+page.svelte": {

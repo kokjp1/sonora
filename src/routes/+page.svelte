@@ -12,6 +12,17 @@
         redirectToAuthCodeFlow
     } from '$lib/spotify.js';
 
+    // Keep the tab title stable so the browser never falls back to showing the callback URL
+    const APP_TITLE = 'Sonora 🎧';
+    function setAppTitle() {
+        if (!browser) return;
+        try {
+            document.title = APP_TITLE;
+        } catch (e) {
+            /* ignore */
+        }
+    }
+
     /* -------------------------
        Constants / configuration
     ------------------------- */
@@ -90,6 +101,8 @@
             clearInterval(timer);
             timer = null;
         }
+        // ensure title stays correct when signing out
+        setAppTitle();
     }
 
     /* -------------------------
@@ -145,6 +158,8 @@
             await updateNowPlaying();
             timer = setInterval(updateNowPlaying, 1000);
         }
+        // enforce a stable tab title when the page mounts / after redirect
+        setAppTitle();
     });
 
     onDestroy(() => {
@@ -161,6 +176,11 @@
     // Recompute glow when album art changes (only in browser)
     $: if (browser && coverUrl) {
         computeGlow(coverUrl);
+    }
+
+    // Reactive guard: ensure the app title remains set in the browser environment
+    $: if (browser) {
+        setAppTitle();
     }
 </script>
 
@@ -533,6 +553,34 @@
         text-align: center;
         color: #cfd4dc;
         box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    /* zero-state primary button */
+    .zero-card .btn {
+        display: inline-block;
+        background: linear-gradient(180deg, #1db954 0%, #16a34a 100%);
+        color: #fff;
+        border: none;
+        padding: 10px 18px;
+        font-weight: 700;
+        border-radius: 8px;
+        cursor: pointer;
+        box-shadow: 0 8px 24px rgba(29, 185, 84, 0.18);
+        transition: transform .12s ease, box-shadow .12s ease, opacity .12s ease;
+        text-decoration: none;
+        font-size: 14px;
+    }
+    .zero-card .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 14px 34px rgba(29, 185, 84, 0.22);
+    }
+    .zero-card .btn:active {
+        transform: translateY(0);
+        opacity: .95;
+    }
+    .zero-card .btn:focus {
+        outline: 3px solid rgba(29, 185, 84, 0.14);
+        outline-offset: 3px;
     }
 
     @media (max-width: 720px) {
