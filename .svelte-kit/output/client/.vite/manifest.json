@@ -1,6 +1,6 @@
 {
   ".svelte-kit/generated/client-optimized/app.js": {
-    "file": "_app/immutable/entry/app.DrP-tEjb.js",
+    "file": "_app/immutable/entry/app.B6yn4KIR.js",
     "name": "entry/app",
     "src": ".svelte-kit/generated/client-optimized/app.js",
     "isEntry": true,
@@ -36,7 +36,7 @@
     ]
   },
   ".svelte-kit/generated/client-optimized/nodes/1.js": {
-    "file": "_app/immutable/nodes/1.CaWar0VF.js",
+    "file": "_app/immutable/nodes/1.BiMW1uJg.js",
     "name": "nodes/1",
     "src": ".svelte-kit/generated/client-optimized/nodes/1.js",
     "isEntry": true,
@@ -46,11 +46,11 @@
       "_CZDmPwCq.js",
       "_DQBhV38n.js",
       "_CHmOn01Q.js",
-      "_BdzAcsnN.js"
+      "_DkMInZlm.js"
     ]
   },
   ".svelte-kit/generated/client-optimized/nodes/2.js": {
-    "file": "_app/immutable/nodes/2.Cos3BX46.js",
+    "file": "_app/immutable/nodes/2.BjG5cvhO.js",
     "name": "nodes/2",
     "src": ".svelte-kit/generated/client-optimized/nodes/2.js",
     "isEntry": true,
@@ -62,14 +62,14 @@
       "_DQBhV38n.js",
       "_tt7bTpbt.js",
       "_BT319vO3.js",
-      "_BaZ8MSrX.js"
+      "_Cg3hiqjO.js"
     ],
     "css": [
-      "_app/immutable/assets/2.ki0stSWo.css"
+      "_app/immutable/assets/2.tDNrWL-X.css"
     ]
   },
   ".svelte-kit/generated/client-optimized/nodes/3.js": {
-    "file": "_app/immutable/nodes/3.DzlI3vLD.js",
+    "file": "_app/immutable/nodes/3.Bd9u7NP4.js",
     "name": "nodes/3",
     "src": ".svelte-kit/generated/client-optimized/nodes/3.js",
     "isEntry": true,
@@ -79,26 +79,14 @@
       "_CZDmPwCq.js",
       "_CHmOn01Q.js",
       "_DQBhV38n.js",
-      "_BaZ8MSrX.js",
-      "_BdzAcsnN.js"
+      "_Cg3hiqjO.js",
+      "_DkMInZlm.js"
     ]
   },
   "_BT319vO3.js": {
     "file": "_app/immutable/chunks/BT319vO3.js",
     "name": "attributes",
     "imports": [
-      "_DQBhV38n.js"
-    ]
-  },
-  "_BaZ8MSrX.js": {
-    "file": "_app/immutable/chunks/BaZ8MSrX.js",
-    "name": "spotify"
-  },
-  "_BdzAcsnN.js": {
-    "file": "_app/immutable/chunks/BdzAcsnN.js",
-    "name": "entry",
-    "imports": [
-      "_CHmOn01Q.js",
       "_DQBhV38n.js"
     ]
   },
@@ -116,9 +104,21 @@
       "_DQBhV38n.js"
     ]
   },
+  "_Cg3hiqjO.js": {
+    "file": "_app/immutable/chunks/Cg3hiqjO.js",
+    "name": "spotify"
+  },
   "_DQBhV38n.js": {
     "file": "_app/immutable/chunks/DQBhV38n.js",
     "name": "snippet"
+  },
+  "_DkMInZlm.js": {
+    "file": "_app/immutable/chunks/DkMInZlm.js",
+    "name": "entry",
+    "imports": [
+      "_CHmOn01Q.js",
+      "_DQBhV38n.js"
+    ]
   },
   "_DsnmJJEf.js": {
     "file": "_app/immutable/chunks/DsnmJJEf.js",
@@ -132,12 +132,12 @@
     ]
   },
   "node_modules/@sveltejs/kit/src/runtime/client/entry.js": {
-    "file": "_app/immutable/entry/start.BsfOIS6a.js",
+    "file": "_app/immutable/entry/start.BydofWrW.js",
     "name": "entry/start",
     "src": "node_modules/@sveltejs/kit/src/runtime/client/entry.js",
     "isEntry": true,
     "imports": [
-      "_BdzAcsnN.js"
+      "_DkMInZlm.js"
     ]
   },
   "src/lib/assets/favicon.svg": {

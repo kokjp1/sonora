@@ -455,7 +455,7 @@
         cursor: pointer;
         padding: 8px 12px;
         border-radius: 6px;
-        transition: transform 160ms cubic-bezier(.2,.9,.2,1), box-shadow 160ms ease, background-color 160ms ease;
+    transition: transform 220ms cubic-bezier(.2,.9,.2,1), box-shadow 220ms ease, background-color 220ms ease;
         box-shadow: 0 6px 18px rgba(0,0,0,0.45);
         }
         /* smooth pure-scale hover using transform + transition */
