@@ -15,8 +15,7 @@
     /* -------------------------
        Constants / configuration
     ------------------------- */
-    // Developer-friendly swatch selection — reorder to change preference
-    // Common swatches: Vibrant, DarkVibrant, LightVibrant, Muted, DarkMuted, LightMuted
+
     const SWATCH_ORDER_DEFAULT = ['Vibrant', 'DarkVibrant', 'DarkMuted', 'Muted'];
 
     /* -------------------------
@@ -24,7 +23,6 @@
     ------------------------- */
     let swatchOrder = SWATCH_ORDER_DEFAULT;
 
-    // Expose a quick dev toggle and parse ?swatch=... when running in browser
     if (browser) {
         try {
             const p = new URL(location.href).searchParams.get('swatch');
@@ -50,8 +48,8 @@
     let lastTrackId = null;
     let error = null;
     let timer;
-    let glow = null; // rgba string used for vinyl glow
-    let glowSoft = null; // softer, larger halo (exposed to CSS as --glow-soft)
+    let glow = null; 
+    let glowSoft = null; 
 
     /* -------------------------
        Utility helpers
@@ -97,8 +95,6 @@
     /* -------------------------
        Color extraction (Vibrant)
     ------------------------- */
-    // Extract a color from the album cover using the swatch order configuration.
-    // Driven by `swatchOrder` so it's easy to change preferred swatches.
     async function computeGlow(url) {
         try {
             if (!url) {
@@ -116,8 +112,6 @@
                     break;
                 }
             }
-
-            // fallback: pick any available swatch
             if (!sw) {
                 sw = Object.values(palette).find(Boolean) || null;
             }
@@ -228,7 +222,6 @@
             </div>
         </div>
     {:else}
-        <!-- Playing-zero state: shown only when signed in but nothing is playing -->
         <div class="playing-zero" role="region" aria-label="Nothing is playing">
             <div class="zero-card">
                 <h2>Nothing is playing</h2>
@@ -244,7 +237,6 @@
         <p class="err">{error}</p>
     {/if}
 
-    <!-- ZERO STATE: shown only when signed out (keeps status bar unchanged) -->
     <div class="zero-state" role="region" aria-label="Sign in to Sonora">
         <div class="zero-card">
             <h2>You’re signed out</h2>
@@ -275,7 +267,6 @@
         padding: 40px 20px;
     }
 
-    /* Left column (track info) */
     .left {
         flex: 1 1 520px;
         max-width: 520px;
@@ -305,7 +296,7 @@
     }
     .progress > div {
         height: 100%;
-        background: var(--glow, #1db954); /* use the computed glow color, fallback to spotify green */
+        background: var(--glow, #1db954); 
     }
     .times {
         font-size: 12px;
@@ -330,7 +321,6 @@
         font-size: 14px;
     }
 
-    /* ---------- Right column: album cover + vinyl ---------- */
     .right {
         flex: 0 0 560px;
         display: flex;
@@ -338,7 +328,6 @@
         align-items: center;
     }
 
-    /* use CSS variables for cover/vinyl so the inner label can be sized proportionally */
     .artwrap {
         /* default (desktop) sizes */
         --cover-size: 520px; /* cover is the reference */
@@ -354,7 +343,6 @@
         overflow: visible;
     }
 
-    /* album cover sits in front (higher z) and slightly left of the vinyl */
     .cover {
         position: absolute;
         left: 50%;
@@ -368,12 +356,10 @@
         box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
     }
 
-    /* Vinyl behind the cover, centered vertically */
     .vinyl {
         position: absolute;
         left: 50%;
         top: 50%;
-        /* keep translateY and rotate in same transform so animation doesn't break centering */
         transform: translate(-50%, -50%) translateX(40%);
         width: var(--vinyl-size);
         height: var(--vinyl-size);
@@ -396,12 +382,10 @@
         position: absolute;
         left: 50%;
         top: 50%;
-        /* use a dedicated label ratio so the inner image scales consistently */
         width: calc(var(--vinyl-size) * var(--label-ratio));
         height: calc(var(--vinyl-size) * var(--label-ratio));
         transform: translate(-50%, -50%);
         border-radius: 50%;
-        /* ensure the image always fills the label element consistently - use cover to avoid letterboxing */
         background: var(--label) center / cover no-repeat;
         box-shadow:
             inset 0 0 0 10px #111,
@@ -442,7 +426,6 @@
         color: #d33;
     }
 
-    /* base status button styling (color set per-state below) */
     .status button {
         margin-left: 8px;
         background: none;
@@ -451,11 +434,9 @@
         text-decoration: underline;
         font-weight: 600;
         padding: 2px 4px;
-        /* don't override the global font — inherit the site font */
         font-family: inherit;
     }
 
-    /* match the button color to the dot/state (fixed ordering: connected = green, disconnected = red) */
     .status.connected button {
         color: #d33;
     }
@@ -463,7 +444,6 @@
         color: #1db954;
     }
 
-    /* Ensure zero-state uses the same font (explicit to be safe) */
     .zero-state,
     .zero-card,
     .zero-card * {
@@ -484,11 +464,10 @@
         .right {
             order: -1;
         }
-        /* reduce sizes by changing the cover size variable so vinyl and label scale consistently */
         .artwrap {
             --cover-size: 320px;
             --vinyl-ratio: 0.75;
-            --label-ratio: 0.5; /* keep larger label on smaller screens as well */
+            --label-ratio: 0.5; 
             width: var(--cover-size);
             height: var(--cover-size);
             margin: 0 auto;
@@ -517,7 +496,7 @@
         .artwrap {
             --cover-size: 250px;
             --vinyl-ratio: 0.8;
-            --label-ratio: 0.5; /* keep larger label on small phones as well */
+            --label-ratio: 0.5; 
             width: var(--cover-size);
             height: var(--cover-size);
         }
@@ -533,8 +512,6 @@
         }
     }
 
-    /* playing-zero (signed-in but nothing playing) and zero-state (signed-out)
-       Centered and made smaller / more responsive so it won't overflow. */
     .playing-zero,
     .zero-state {
         display: flex;
@@ -545,11 +522,10 @@
         box-sizing: border-box;
     }
 
-    /* reduce the card width so it shrinks earlier and avoids overflow */
     .zero-card {
         width: 100%;
-        max-width: 480px; /* default card cap */
-        width: min(95%, 480px); /* responsive cap to avoid overflow */
+        max-width: 480px; 
+        width: min(95%, 480px); 
         background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
         border: 1px solid rgba(255, 255, 255, 0.04);
         padding: 18px;
@@ -559,7 +535,6 @@
         box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
     }
 
-    /* smaller typography & tighter padding on medium and small screens */
     @media (max-width: 720px) {
         .zero-card {
             padding: 14px;
