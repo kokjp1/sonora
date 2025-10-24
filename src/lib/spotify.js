@@ -19,6 +19,10 @@ export async function redirectToAuthCodeFlow() {
   const verifier = generateCodeVerifier(128);
   const challenge = await generateCodeChallenge(verifier);
   localStorage.setItem(STORAGE_KEYS.VERIFIER, verifier);
+  // Remember where to return to after login
+  try {
+    localStorage.setItem('spotify_post_login_redirect', location.pathname + location.search + location.hash);
+  } catch {}
 
   const params = new URLSearchParams({
     response_type: 'code',
@@ -121,3 +125,4 @@ export async function api(path) {
 // API ENDPOINT CALLS AKA FETCH REQUESTS 
 export const getMe = () => api('/me');
 export const getCurrentlyPlaying = () => api('/me/player/currently-playing');
+export const getTrack = (id) => api(`/tracks/${id}`);

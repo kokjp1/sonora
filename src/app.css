@@ -47,5 +47,13 @@
 }
 
 html {
-  font-family: var(--font-sans)
+  background-color: #121212;
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  overflow-y: hidden;
+}
+
+/* ensure body also explicitly inherits the design font */
+body {
+  font-family: var(--font-sans);
 }

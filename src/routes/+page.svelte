@@ -1,82 +1,580 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
-  import { browser } from '$app/environment';
-  import { redirectToAuthCodeFlow, hasToken, getCurrentlyPlaying, logout } from '$lib/spotify.js';
+    import { onMount, onDestroy } from 'svelte';
+    import { browser } from '$app/environment';
+    import {
+        redirectToAuthCodeFlow,
+        hasToken,
+        getCurrentlyPlaying,
+        logout,
+        getTrack
+    } from '$lib/spotify.js';
+    import { Vibrant } from 'node-vibrant/browser';
 
-  let authorized = false;
-  let nowPlaying = null;
-  let error = null;
-  let nowPlayingUpdateInterval;
+    // --- Developer-friendly swatch selection ---
+    // Edit this array to change the preferred swatch order.
+    // Common swatches: Vibrant, DarkVibrant, LightVibrant, Muted, DarkMuted, LightMuted
+    const SWATCH_ORDER_DEFAULT = ['DarkVibrant', 'Vibrant', 'DarkMuted', 'Muted'];
 
-  function formatTime(ms) {
-    const s = Math.floor((ms || 0) / 1000);
-    const m = Math.floor(s / 60);
-    const ss = String(s % 60).padStart(2, '0');
-    return `${m}:${ss}`;
-  }
+    // swatchOrder can be overridden at runtime via ?swatch=DarkVibrant or ?swatch=Vibrant,Muted
+    // or by opening devtools and setting window.__VIBRANT_SWATCH_ORDER = ['LightVibrant', 'Muted']
+    let swatchOrder = SWATCH_ORDER_DEFAULT;
 
-  async function updateNowPlaying() {
-    try {
-      nowPlaying = await getCurrentlyPlaying();
-      error = null;
-    } catch (e) {
-      error = String(e);
+    if (browser) {
+        try {
+            const p = new URL(location.href).searchParams.get('swatch');
+            if (p) swatchOrder = p.split(',').map(s => s.trim()).filter(Boolean);
+        } catch (e) { /* ignore */ }
+
+        // expose for quick dev toggles in console
+        window.__VIBRANT_SWATCH_ORDER = swatchOrder;
     }
-  }
 
-  onMount(async () => {
-    if (!browser) return;
-    authorized = hasToken();
-    if (authorized) {
-      await updateNowPlaying();
-      nowPlayingUpdateInterval = setInterval(updateNowPlaying, 1000);
+    let authorized = false;
+    let nowPlaying = null;
+    let trackExtra = null;
+    let lastTrackId = null;
+    let error = null;
+    let timer;
+    let glow = null; // rgba string used for vinyl glow
+
+    function formatTime(ms) {
+        const s = Math.floor((ms || 0) / 1000);
+        const m = Math.floor(s / 60);
+        const ss = String(s % 60).padStart(2, '0');
+        return `${m}:${ss}`;
     }
-  });
 
-  onDestroy(() => { if (nowPlayingUpdateInterval) clearInterval(nowPlayingUpdateInterval); });
-  
-  function signout() {
-    logout();
-    authorized = false;
-    nowPlaying = null;
-    if (nowPlayingUpdateInterval) { clearInterval(nowPlayingUpdateInterval); nowPlayingUpdateInterval = null; }
-  }
+    async function updateNowPlaying() {
+        try {
+            const np = await getCurrentlyPlaying();
+            nowPlaying = np || null;
+            error = null;
+
+            const id = np?.item?.id || null;
+            if (id && id !== lastTrackId) {
+                lastTrackId = id;
+                trackExtra = np?.item?.popularity == null ? await getTrack(id) : null;
+            }
+        } catch (e) {
+            error = String(e);
+        }
+    }
+
+    onMount(async () => {
+        if (!browser) return;
+        authorized = hasToken();
+        if (authorized) {
+            await updateNowPlaying();
+            timer = setInterval(updateNowPlaying, 1000);
+        }
+    });
+
+    onDestroy(() => {
+        if (timer) clearInterval(timer);
+    });
+
+    function signout() {
+        logout();
+        authorized = false;
+        nowPlaying = null;
+        trackExtra = null;
+        lastTrackId = null;
+        if (timer) {
+            clearInterval(timer);
+            timer = null;
+        }
+    }
+
+    $: track = nowPlaying?.item;
+    $: coverUrl = track?.album?.images?.[0]?.url || '';
+    $: popularity = track?.popularity ?? trackExtra?.popularity ?? null;
+
+    // Extract a color from the album cover using the swatch order configuration.
+    // This is now driven by `swatchOrder` so it's easy to change which swatch is preferred.
+    async function computeGlow(url) {
+        try {
+            if (!url) {
+                glow = null;
+                return;
+            }
+            const palette = await Vibrant.from(url).getPalette();
+
+            // pick the first available swatch from swatchOrder
+            let sw = null;
+            for (const name of swatchOrder) {
+                if (palette?.[name]) {
+                    sw = palette[name];
+                    break;
+                }
+            }
+
+            // fallback: pick any available swatch
+            if (!sw) {
+                sw = Object.values(palette).find(Boolean) || null;
+            }
+
+            if (sw?.rgb) {
+                const [r, g, b] = sw.rgb;
+                glow = `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, 1)`;
+            } else if (sw?.hex) {
+                glow = sw.hex;
+            } else {
+                glow = null;
+            }
+        } catch {
+            glow = null;
+        }
+    }
+
+    $: if (browser && coverUrl) {
+        // Recompute when the album art changes
+        computeGlow(coverUrl);
+    }
 </script>
 
-<h1>Now Playing on Spotify</h1>
+<!-- Status bar -->
+<div class="status" class:connected={authorized} class:disconnected={!authorized}>
+    <span class="dot {authorized ? 'green' : 'red'}"></span>
+    <span>Status: {authorized ? 'Connected' : 'Disconnected'}</span>
+    {#if authorized}
+        <button on:click={signout}>Sign Out</button>
+    {:else}
+        <button on:click={redirectToAuthCodeFlow}>Sign In</button>
+    {/if}
+</div>
 
 {#if authorized}
-  {#if error}<p style="color:#f55">{error}</p>{/if}
+    {#if error}<p class="err">{error}</p>{/if}
 
-  {#if nowPlaying?.item}
-    {#key nowPlaying.item.id}
-      <div style="display:flex; gap:16px; align-items:center;">
-        {#if nowPlaying.item.album?.images?.[0]}
-          <img src={nowPlaying.item.album.images[0].url} alt="album art" width="396" height="396" />
-        {/if}
-        <div>
-          <h2 style="margin:0">{nowPlaying.item.name}</h2>
-          <div style="color:#889;">
-            {nowPlaying.item.artists?.map(a => a.name).join(', ')} • {nowPlaying.item.album?.name}
-          </div>
+    {#if track}
+        <div class="layout" style={`--label:url(${coverUrl}); --glow:${glow ?? ''};`}>
+            <!-- Left: track details -->
+            <div class="left">
+                <h1 class="title">
+                    {track.name}
+                    {#if track.explicit}<span class="badge">E</span>{/if}
+                </h1>
 
-          <div style="margin-top:8px; width:360px; background:#222; height:6px; border-radius:3px; overflow:hidden;">
-            {#if nowPlaying.item.duration_ms}
-              <div style={`height:100%; width:${Math.min(100, 100*(nowPlaying.progress_ms || 0)/nowPlaying.item.duration_ms)}%; background:#1db954;`}></div>
-            {/if}
-          </div>
-          <div style="font-size:12px; color:#889; margin-top:4px;">
-            {formatTime(nowPlaying.progress_ms)} / {formatTime(nowPlaying.item.duration_ms)} {nowPlaying.is_playing ? '• Playing' : '• Paused'}
-          </div>
+                <div class="sub">
+                    {track.artists?.map((a) => a.name).join(', ')} • {track.album?.name}
+                </div>
+
+                <div class="progress">
+                    {#if track.duration_ms}
+                        <div
+                            style={`width:${Math.min(100, (100 * (nowPlaying?.progress_ms || 0)) / track.duration_ms)}%`}
+                        ></div>
+                    {/if}
+                </div>
+                <div class="times">
+                    {formatTime(nowPlaying?.progress_ms)} / {formatTime(track.duration_ms)}
+                    {nowPlaying?.is_playing ? '• Playing' : '• Paused'}
+                </div>
+
+                <section class="info">
+                    <h3>General Track Information</h3>
+                    <div class="kv">
+                        <div>⏳ Duur: {formatTime(track.duration_ms)}</div>
+                        <div>🔥 Populariteit: {popularity ?? '–'}</div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Right: album cover + vinyl (only shown when track exists) -->
+            <div class="right">
+                <div class="artwrap">
+                    {#if coverUrl}
+                        <img class="cover" src={coverUrl} alt="album art" width="520" height="520" />
+                    {/if}
+                    <div
+                        class="vinyl {nowPlaying?.is_playing ? 'spinning' : ''}"
+                        aria-hidden="true"
+                    ></div>
+                </div>
+            </div>
         </div>
-      </div>
-    {/key}
-    <button on:click={signout} style="margin-top:12px;">Logout</button>
-  {:else}
-    <p>Nothing is playing right now. Start playback on any Spotify device.</p>
-    <button on:click={signout} style="margin-top:12px;">Logout</button>
-  {/if}
+    {:else}
+        <!-- Playing-zero state: shown only when signed in but nothing is playing -->
+        <div class="playing-zero" role="region" aria-label="Nothing is playing">
+            <div class="zero-card">
+                <h2>Nothing is playing</h2>
+                <p class="lead">Start playback on any Spotify device to show album art and the vinyl visualizer.</p>
+                <p class="hint">Tip: open Spotify on your phone, laptop or web player and press play.</p>
+            </div>
+        </div>
+    {/if}
 {:else}
-  {#if error}<p style="color:#f55">{error}</p>{/if}
-  <button on:click={redirectToAuthCodeFlow}>Connect Spotify</button>
+    {#if error}
+        <p class="err">{error}</p>
+    {/if}
+
+    <!-- ZERO STATE: shown only when signed out (keeps status bar unchanged) -->
+    <div class="zero-state" role="region" aria-label="Sign in to Sonora">
+        <div class="zero-card">
+            <h2>You’re signed out</h2>
+            <p class="lead">Sign in with Spotify to show currently playing tracks, album art and the vinyl visualizer.</p>
+            <button class="btn" on:click={redirectToAuthCodeFlow}>Sign in with Spotify</button>
+            <p class="hint">No account? Visit <a href="https://spotify.com" target="_blank" rel="noopener noreferrer">spotify.com</a>.</p>
+        </div>
+    </div>
 {/if}
+
+<style>
+    /* ---------- layout / centering ---------- */
+    .layout {
+        min-height: calc(100vh - 160px);
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        align-items: center;
+        gap: 200px;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 40px 20px;
+    }
+
+    /* Left column (track info) */
+    .left {
+        flex: 1 1 520px;
+        max-width: 520px;
+        color: #cfd4dc;
+    }
+
+    .title {
+        font-size: 64px;
+        margin: 8px 0 4px;
+        line-height: 1;
+        color: white;
+    }
+    .badge {
+        display: inline-block;
+        font-size: 0.5em;
+        line-height: 1;
+        padding: 2px 6px;
+        margin-left: 8px;
+        border-radius: 4px;
+        background: #2b2d31;
+        border: 1px solid #4b4f57;
+        color: #cfd4dc;
+        vertical-align: middle;
+    }
+    .sub {
+        color: #9aa5b1;
+        margin-top: 16px;
+        margin-bottom:16px;
+        font-size: 18px;
+    }
+
+    .progress {
+        width: 360px;
+        height: 8px;
+        background: #1a1c20;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    .progress > div {
+        height: 100%;
+        background: var(--glow, #1db954); /* use the computed glow color, fallback to spotify green */
+    }
+    .times {
+        font-size: 12px;
+        color: #9aa5b1;
+        margin-top: 6px;
+    }
+
+    .info {
+        margin-top: 18px;
+    }
+    .info h3 {
+        margin: 0 0 8px;
+        font-size: 12px;
+        color: #9aa5b1;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+    .kv {
+        display: flex;
+        gap: 24px;
+        color: #cfd4dc;
+        font-size: 14px;
+    }
+
+    /* ---------- Right column: album cover + vinyl ---------- */
+    .right {
+        flex: 0 0 560px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    /* use CSS variables for cover/vinyl so the inner label can be sized proportionally */
+    .artwrap {
+        /* default (desktop) sizes */
+        --cover-size: 520px;              /* cover is the reference */
+        --vinyl-ratio: 0.75;              /* vinyl = cover * ratio */
+        --label-ratio: 0.50;              /* <-- increased so label image is bigger */
+        --vinyl-size: calc(var(--cover-size) * var(--vinyl-ratio));
+
+        position: relative;
+        width: var(--cover-size);
+        height: var(--cover-size);
+        filter: drop-shadow(0 40px 80px rgba(0, 0, 0, 0.35));
+        box-sizing: border-box;
+        overflow: visible;
+    }
+
+    /* album cover sits in front (higher z) and slightly left of the vinyl */
+    .cover {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-60%, -50%); /* overlap the vinyl */
+        width: var(--cover-size);
+        height: var(--cover-size);
+        object-fit: cover;
+        border-radius: 4px;
+        z-index: 2;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+    }
+
+    /* Vinyl behind the cover, centered vertically */
+    .vinyl {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        /* keep translateY and rotate in same transform so animation doesn't break centering */
+        transform: translate(-50%, -50%) translateX(40%);
+        width: var(--vinyl-size);
+        height: var(--vinyl-size);
+        border-radius: 50%;
+        background:
+            /* center hole shadow */
+            radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.85) 0 25px, transparent 26px),
+            /* grooves */ repeating-radial-gradient(circle at 50% 50%, #0a0a0a 0 2px, #111 2px 4px);
+        background-color: #0b0b0b;
+        box-shadow:
+            inset 0 0 90px rgba(255, 255, 255, 0.06),
+            0 0 140px var(--glow, rgba(255, 70, 70, 0.12));
+        animation: spin 14s linear infinite;
+        animation-play-state: paused;
+        z-index: 1;
+    }
+
+    .vinyl::after {
+        content: '';
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        /* use a dedicated label ratio so the inner image scales consistently */
+        width: calc(var(--vinyl-size) * var(--label-ratio));
+        height: calc(var(--vinyl-size) * var(--label-ratio));
+        transform: translate(-50%, -50%);
+        border-radius: 50%;
+        /* ensure the image always fills the label element consistently - use cover to avoid letterboxing */
+        background: var(--label) center / cover no-repeat;
+        box-shadow:
+            inset 0 0 0 10px #111,
+            0 0 0 1px #000;
+    }
+    .vinyl.spinning {
+        animation-play-state: running;
+    }
+    @keyframes spin {
+        from { transform: translate(-50%, -50%) translateX(40%) rotate(0deg); }
+        to   { transform: translate(-50%, -50%) translateX(40%) rotate(360deg); }
+    }
+
+    /* status / misc */
+    .status {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #cfd4dc;
+        margin: 20px 0 0 20px;
+    }
+    .status .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        box-shadow: 0 0 10px currentColor;
+    }
+    .status .dot.green {
+        background: #1db954;
+        color: #1db954;
+    }
+    .status .dot.red {
+        background: #d33;
+        color: #d33;
+    }
+
+    /* base status button styling (color set per-state below) */
+    .status button {
+        margin-left: 8px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        text-decoration: underline;
+        font-weight: 600;
+        padding: 2px 4px;
+        /* don't override the global font — inherit the site font */
+        font-family: inherit;
+    }
+
+    /* match the button color to the dot/state (fixed ordering: connected = green, disconnected = red) */
+    .status.connected button {
+        color: #d33;
+    }
+    .status.disconnected button {
+        color: #1db954;
+    }
+
+    /* Ensure zero-state uses the same font (explicit to be safe) */
+    .zero-state,
+    .zero-card,
+    .zero-card * {
+        font-family: inherit;
+    }
+
+    .err {
+        color: #f55;
+    }
+
+    /* ----------- breakpoint: tablet/phone (below 1392px) ---------- */
+    @media (max-width: 1392px) {
+        .layout {
+            flex-direction: column;
+            gap: 40px;
+            min-height: auto;
+        }
+        .right {
+            order: -1;
+        }
+        /* reduce sizes by changing the cover size variable so vinyl and label scale consistently */
+        .artwrap {
+            --cover-size: 320px;
+            --vinyl-ratio: 0.75;
+            --label-ratio: 0.50; /* keep larger label on smaller screens as well */
+            width: var(--cover-size);
+            height: var(--cover-size);
+            margin: 0 auto;
+        }
+        .cover {
+            transform: translate(-60%, -50%);
+            width: var(--cover-size);
+            height: var(--cover-size);
+        }
+        .vinyl {
+            transform: translate(-50%, -50%) translateX(40%);
+            width: var(--vinyl-size);
+            height: var(--vinyl-size);
+        }
+    }
+    @media (max-width:595px) {
+        
+        .right{
+          flex: 0 0 360px;
+        }
+        .left{
+          scale:85%;
+        }
+        .title{
+          font-size:3em;
+        }
+        .artwrap {
+            --cover-size: 250px;
+            --vinyl-ratio: 0.8;
+            --label-ratio: 0.50; /* keep larger label on small phones as well */
+            width: var(--cover-size);
+            height: var(--cover-size);
+        }
+        .cover {
+            transform: translate(-60%, -50%);
+            width: var(--cover-size);
+            height: var(--cover-size);
+        }
+        .vinyl {
+            transform: translate(-50%, -50%) translateX(48%);
+            width: var(--vinyl-size);
+            height: var(--vinyl-size);
+        }
+    }
+
+    /* zero state (visible only when signed out) */
+.zero-state {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: calc(100vh - 160px);
+    padding: 40px 20px;
+    box-sizing: border-box;
+}
+
+.zero-card {
+    width: 100%;
+    max-width: 720px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    border: 1px solid rgba(255,255,255,0.04);
+    padding: 28px;
+    border-radius: 10px;
+    text-align: center;
+    color: #cfd4dc;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+
+.zero-card h2 {
+    margin: 0 0 10px;
+    font-size: 22px;
+    color: #ffffff;
+}
+
+.zero-card .lead {
+    margin: 0 0 18px;
+    color: #9aa5b1;
+    line-height: 1.4;
+}
+
+.btn {
+    background: #1db954;
+    color: #061313;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 14px;
+}
+
+.btn:hover { filter: brightness(.95); }
+
+.zero-card .hint {
+    margin-top: 12px;
+    font-size: 13px;
+    color: #8e9aa6;
+}
+
+.zero-card a { color: #1db954; text-decoration: underline; }
+
+@media (max-width: 720px) {
+    .zero-card { padding: 20px; border-radius: 8px; }
+    .zero-card h2 { font-size: 20px; }
+    .zero-card .lead { font-size: 14px; }
+}
+
+/* playing-zero (signed-in but nothing playing) — reuses .zero-card styles */
+.playing-zero {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: calc(100vh - 160px);
+    padding: 40px 20px;
+    box-sizing: border-box;
+}
+.playing-zero .zero-card {
+    max-width: 640px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));
+    border: 1px solid rgba(255,255,255,0.03);
+}
+/* ensure the vinyl is not rendered or visible when there's no track (defensive) */
+.right .artwrap .vinyl { display: block; }
+.playing-zero ~ .layout .right .artwrap .vinyl { display: none; }
+</style>
