@@ -5,7 +5,8 @@ const SCOPES = [
   'user-read-email',
   'user-read-private',
   'user-read-currently-playing',
-  'user-read-playback-state'
+  'user-read-playback-state',
+  'user-modify-playback-state'
 ].join(' ');
 
 const STORAGE_KEYS = {
@@ -106,20 +107,52 @@ export function logout() {
   localStorage.removeItem(STORAGE_KEYS.VERIFIER);
 }
 
-export async function api(path) {
+export async function api(path, opts = {}) {
   const accessToken = localStorage.getItem(STORAGE_KEYS.ACCESS);
   if (!accessToken) throw new Error('Not authenticated');
 
-  const response = await fetch(`https://api.spotify.com/v1${path}`, {
-    headers: { Authorization: `Bearer ${accessToken}` }
-  });
+  const { method = 'GET', headers = {}, body = null, json = false } = opts;
+
+  const fetchHeaders = {
+    Authorization: `Bearer ${accessToken}`,
+    ...headers
+  };
+
+  const fetchOpts = {
+    method,
+    headers: fetchHeaders
+  };
+
+  if (body != null) {
+    // if caller asked for JSON convenience, stringify and set content type
+    fetchOpts.body = json ? JSON.stringify(body) : body;
+    if (json) fetchOpts.headers = { 'Content-Type': 'application/json', ...fetchOpts.headers };
+  }
+
+  const response = await fetch(`https://api.spotify.com/v1${path}`, fetchOpts);
 
   if (response.status === 204) return null;
   if (!response.ok) {
     if (response.status === 401) localStorage.removeItem(STORAGE_KEYS.ACCESS);
     throw new Error(`${response.status} ${response.statusText}`);
   }
-  return response.json();
+
+  // Some Spotify endpoints return empty bodies or non-JSON responses even with 200.
+  // Only attempt to parse JSON when the content-type indicates JSON; otherwise
+  // return null for empty responses or the raw text if present.
+  const contentType = (response.headers.get('content-type') || '').toLowerCase();
+  if (contentType.includes('application/json')) {
+    return response.json();
+  }
+
+  // fallback: try to read text and parse if non-empty
+  const txt = await response.text();
+  if (!txt) return null;
+  try {
+    return JSON.parse(txt);
+  } catch {
+    return txt;
+  }
 }
 
 // API ENDPOINT CALLS AKA FETCH REQUESTS 

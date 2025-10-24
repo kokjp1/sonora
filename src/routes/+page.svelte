@@ -10,7 +10,7 @@
         hasToken,
         logout,
         redirectToAuthCodeFlow
-    } from '$lib/spotify.js';
+    , api } from '$lib/spotify.js';
 
     // Keep the tab title stable so the browser never falls back to showing the callback URL
     const APP_TITLE = 'Sonora 🎧';
@@ -89,6 +89,99 @@
         } catch (e) {
             error = String(e);
         }
+    }
+
+    // --- Player control helpers (use existing api helper) ---
+    async function play() {
+        if (!browser) return;
+        try {
+            await api('/me/player/play', { method: 'PUT' });
+            await updateNowPlaying();
+        } catch (e) {
+            error = String(e);
+        }
+    }
+
+    async function pause() {
+        if (!browser) return;
+        try {
+            await api('/me/player/pause', { method: 'PUT' });
+            await updateNowPlaying();
+        } catch (e) {
+            error = String(e);
+        }
+    }
+
+    async function nextTrack() {
+        if (!browser) return;
+        try {
+            await api('/me/player/next', { method: 'POST' });
+            setTimeout(updateNowPlaying, 250);
+        } catch (e) {
+            error = String(e);
+        }
+    }
+
+    async function previousTrack() {
+        if (!browser) return;
+        try {
+            await api('/me/player/previous', { method: 'POST' });
+            setTimeout(updateNowPlaying, 250);
+        } catch (e) {
+            error = String(e);
+        }
+    }
+
+    function togglePlayPause() {
+        if (nowPlaying?.is_playing) pause();
+        else play();
+    }
+
+    // (shuffle/repeat controls removed - simplified player controls only)
+
+    // Seek to a position when the progress bar is clicked
+    async function seek(e) {
+        if (!browser || !track || !track.duration_ms) return;
+        try {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const pct = Math.max(0, Math.min(1, x / rect.width));
+            const position = Math.floor(pct * track.duration_ms);
+            await api(`/me/player/seek?position_ms=${position}`, { method: 'PUT' });
+            // refresh UI after a short delay
+            setTimeout(updateNowPlaying, 200);
+        } catch (e) {
+            error = String(e);
+        }
+    }
+
+    // Keyboard support for the progress bar: ArrowLeft/Right seek, Home/End, Space/Enter toggle play
+    function handleProgressKeydown(e) {
+        if (!browser || !track || !nowPlaying) return;
+        const step = 5000; // 5s
+        let pos = nowPlaying?.progress_ms || 0;
+        if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            pos = Math.max(0, pos - step);
+        } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            pos = Math.min(track.duration_ms, pos + step);
+        } else if (e.key === 'Home') {
+            e.preventDefault();
+            pos = 0;
+        } else if (e.key === 'End') {
+            e.preventDefault();
+            pos = track.duration_ms;
+        } else if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault();
+            togglePlayPause();
+            return;
+        } else {
+            return;
+        }
+        api(`/me/player/seek?position_ms=${Math.floor(pos)}`, { method: 'PUT' })
+            .then(() => setTimeout(updateNowPlaying, 150))
+            .catch((err) => (error = String(err)));
     }
 
     function signout() {
@@ -210,7 +303,17 @@
                     {track.artists?.map((a) => a.name).join(', ')} • {track.album?.name}
                 </div>
 
-                <div class="progress">
+                <div
+                    class="progress"
+                    role="slider"
+                    tabindex="0"
+                    aria-label="Playback position"
+                    aria-valuemin="0"
+                    aria-valuemax={track?.duration_ms}
+                    aria-valuenow={nowPlaying?.progress_ms ?? 0}
+                    on:click={seek}
+                    on:keydown={handleProgressKeydown}
+                >
                     {#if track.duration_ms}
                         <div
                             style={`width:${Math.min(100, (100 * (nowPlaying?.progress_ms || 0)) / track.duration_ms)}%`}
@@ -220,6 +323,15 @@
                 <div class="times">
                     {formatTime(nowPlaying?.progress_ms)} / {formatTime(track.duration_ms)}
                     {nowPlaying?.is_playing ? '• Playing' : '• Paused'}
+                </div>
+
+                <!-- Player controls -->
+                <div class="controls" role="group" aria-label="Playback controls">
+                    <button class="ctrl" on:click={previousTrack} aria-label="Previous" disabled={!authorized}>⏮</button>
+                    <button class="ctrl big" on:click={togglePlayPause} aria-label={nowPlaying?.is_playing ? 'Pause' : 'Play'} disabled={!authorized}>
+                        {nowPlaying?.is_playing ? '⏸' : '▶'}
+                    </button>
+                    <button class="ctrl" on:click={nextTrack} aria-label="Next" disabled={!authorized}>⏭</button>
                 </div>
 
                 <section class="info">
@@ -313,6 +425,7 @@
         background: #1a1c20;
         border-radius: 4px;
         overflow: hidden;
+        cursor: pointer;
     }
     .progress > div {
         height: 100%;
@@ -323,6 +436,80 @@
         color: #9aa5b1;
         margin-top: 6px;
     }
+
+    /* playback controls (sleek buttons) */
+    .controls {
+        display: flex;
+        gap: 14px;
+        align-items: center;
+        margin: 14px 0 22px;
+    }
+
+    .controls .ctrl {
+        position: relative;
+        overflow: hidden;
+        background: rgba(255,255,255,0.02);
+        border: 1px solid rgba(255,255,255,0.04);
+        color: #e6f0ef;
+        font-size: 18px;
+        cursor: pointer;
+        padding: 8px 12px;
+        border-radius: 6px;
+        transition: transform 160ms cubic-bezier(.2,.9,.2,1), box-shadow 160ms ease, background-color 160ms ease;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+        }
+        /* smooth pure-scale hover using transform + transition */
+        .controls .ctrl:hover {
+            transform: scale(1.1);
+            box-shadow: 0 18px 46px rgba(0,0,0,0.5);
+        }
+    .controls .ctrl:focus {
+        outline: none;
+        box-shadow: 0 0 0 6px rgba(29,185,84,0.10);
+    }
+    .controls .ctrl::after {
+        content: '';
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 10px;
+        height: 10px;
+        background: rgba(255,255,255,0.18);
+        border-radius: 50%;
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 0;
+        pointer-events: none;
+    }
+    .controls .ctrl:active::after {
+        animation: bubble 520ms ease-out forwards;
+    }
+    @keyframes bubble {
+        from { transform: translate(-50%, -50%) scale(0); opacity: .6; }
+        to   { transform: translate(-50%, -50%) scale(3.5); opacity: 0; }
+    }
+    .controls .ctrl:disabled {
+        opacity: 0.35;
+        cursor: default;
+        transform: none;
+        box-shadow: none;
+    }
+
+    .controls .ctrl.big {
+        font-size: 22px;
+        padding: 10px 16px;
+        background: linear-gradient(180deg, #1db954 0%, #16a34a 100%);
+        color: #fff;
+        box-shadow: 0 12px 36px rgba(29,185,84,0.18);
+        border: none;
+        border-radius: 6px;
+        }
+        .controls .ctrl.big {
+            background: linear-gradient(180deg, var(--glow, #1db954) 0%, var(--glow-soft, #16a34a) 100%);
+            color: #fff;
+            box-shadow: 0 12px 36px rgba(0,0,0,0.35), 0 0 36px var(--glow-soft, rgba(29,185,84,0.12));
+            border: none;
+        }
+    .controls .ctrl.big:hover { transform: scale(1.1); }
 
     .info {
         margin-top: 18px;
@@ -502,6 +689,37 @@
             width: var(--vinyl-size);
             height: var(--vinyl-size);
         }
+        /* center and enlarge controls on tablet */
+        .controls {
+            justify-content: center;
+            gap: 16px;
+        }
+        .controls .ctrl {
+            font-size: 20px;
+            padding: 10px 14px;
+            border-radius: 14px;
+        }
+        .controls .ctrl.big {
+            font-size: 26px;
+            padding: 12px 18px;
+            border-radius: 16px;
+        }
+        /* center left column content (text, progress, controls, info) */
+        .left {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+        /* make the progress bar fluid */
+        .progress {
+            width: min(360px, 92%);
+        }
+        .kv {
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
     }
     @media (max-width: 595px) {
         .right {
@@ -529,6 +747,35 @@
             transform: translate(-50%, -50%) translateX(48%);
             width: var(--vinyl-size);
             height: var(--vinyl-size);
+        }
+        /* center and increase control sizes on small screens */
+        .controls {
+            justify-content: center;
+            gap: 14px;
+        }
+        .controls .ctrl {
+            font-size: 22px;
+            padding: 12px 16px;
+            border-radius: 14px;
+        }
+        .controls .ctrl.big {
+            font-size: 28px;
+            padding: 14px 20px;
+        }
+        /* center left column content and make progress responsive */
+        .left {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+        .progress {
+            width: min(360px, 96%);
+        }
+        .kv {
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
         }
     }
 
@@ -607,6 +854,44 @@
         }
         .zero-card .lead {
             font-size: 12px;
+        }
+    }
+    /* extra small screens: slightly reduce from 595 sizing but keep centered */
+    @media (max-width: 420px) {
+        .controls {
+            justify-content: center;
+            gap: 10px;
+        }
+        .controls .ctrl {
+            font-size: 20px;
+            padding: 10px 12px;
+        }
+        .controls .ctrl.big {
+            font-size: 24px;
+            padding: 12px 16px;
+        }
+        .left {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+        .progress { width: 94%; }
+        .kv { flex-direction: column; align-items: center; gap: 10px; }
+    }
+    /* extra small screens: slightly reduce from 595 sizing but keep centered */
+    @media (max-width: 420px) {
+        .controls {
+            justify-content: center;
+            gap: 10px;
+        }
+        .controls .ctrl {
+            font-size: 20px;
+            padding: 10px 12px;
+        }
+        .controls .ctrl.big {
+            font-size: 24px;
+            padding: 12px 16px;
         }
     }
 </style>
