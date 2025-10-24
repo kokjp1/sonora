@@ -337,8 +337,8 @@
                 <section class="info">
                     <h3>General Track Information</h3>
                     <div class="kv">
-                        <div>⏳ Duur: {formatTime(track.duration_ms)}</div>
-                        <div>🔥 Populariteit: {popularity ?? '–'}</div>
+                        <div>⏳ Duration: {formatTime(track.duration_ms)}</div>
+                        <div>🔥 popularity: {popularity ?? '–'}</div>
                     </div>
                 </section>
             </div>
