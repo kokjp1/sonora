@@ -1,34 +1,49 @@
 <script>
-    import { onMount, onDestroy } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import { browser } from '$app/environment';
-    import {
-        redirectToAuthCodeFlow,
-        hasToken,
-        getCurrentlyPlaying,
-        logout,
-        getTrack
-    } from '$lib/spotify.js';
     import { Vibrant } from 'node-vibrant/browser';
 
-    // --- Developer-friendly swatch selection ---
-    // Edit this array to change the preferred swatch order.
-    // Common swatches: Vibrant, DarkVibrant, LightVibrant, Muted, DarkMuted, LightMuted
-    const SWATCH_ORDER_DEFAULT = ['DarkVibrant', 'Vibrant', 'DarkMuted', 'Muted'];
+    // External spotify helpers (kept grouped)
+    import {
+        getCurrentlyPlaying,
+        getTrack,
+        hasToken,
+        logout,
+        redirectToAuthCodeFlow
+    } from '$lib/spotify.js';
 
-    // swatchOrder can be overridden at runtime via ?swatch=DarkVibrant or ?swatch=Vibrant,Muted
-    // or by opening devtools and setting window.__VIBRANT_SWATCH_ORDER = ['LightVibrant', 'Muted']
+    /* -------------------------
+       Constants / configuration
+    ------------------------- */
+    // Developer-friendly swatch selection — reorder to change preference
+    // Common swatches: Vibrant, DarkVibrant, LightVibrant, Muted, DarkMuted, LightMuted
+    const SWATCH_ORDER_DEFAULT = ['Vibrant', 'DarkVibrant', 'DarkMuted', 'Muted'];
+
+    /* -------------------------
+       Runtime-configurable state
+    ------------------------- */
     let swatchOrder = SWATCH_ORDER_DEFAULT;
 
+    // Expose a quick dev toggle and parse ?swatch=... when running in browser
     if (browser) {
         try {
             const p = new URL(location.href).searchParams.get('swatch');
-            if (p) swatchOrder = p.split(',').map(s => s.trim()).filter(Boolean);
-        } catch (e) { /* ignore */ }
+            if (p)
+                swatchOrder = p
+                    .split(',')
+                    .map((s) => s.trim())
+                    .filter(Boolean);
+        } catch (e) {
+            /* ignore */
+        }
 
         // expose for quick dev toggles in console
         window.__VIBRANT_SWATCH_ORDER = swatchOrder;
     }
 
+    /* -------------------------
+       Component state
+    ------------------------- */
     let authorized = false;
     let nowPlaying = null;
     let trackExtra = null;
@@ -36,7 +51,11 @@
     let error = null;
     let timer;
     let glow = null; // rgba string used for vinyl glow
+    let glowSoft = null; // softer, larger halo (exposed to CSS as --glow-soft)
 
+    /* -------------------------
+       Utility helpers
+    ------------------------- */
     function formatTime(ms) {
         const s = Math.floor((ms || 0) / 1000);
         const m = Math.floor(s / 60);
@@ -44,6 +63,9 @@
         return `${m}:${ss}`;
     }
 
+    /* -------------------------
+       Spotify / API interactions
+    ------------------------- */
     async function updateNowPlaying() {
         try {
             const np = await getCurrentlyPlaying();
@@ -60,19 +82,6 @@
         }
     }
 
-    onMount(async () => {
-        if (!browser) return;
-        authorized = hasToken();
-        if (authorized) {
-            await updateNowPlaying();
-            timer = setInterval(updateNowPlaying, 1000);
-        }
-    });
-
-    onDestroy(() => {
-        if (timer) clearInterval(timer);
-    });
-
     function signout() {
         logout();
         authorized = false;
@@ -85,16 +94,16 @@
         }
     }
 
-    $: track = nowPlaying?.item;
-    $: coverUrl = track?.album?.images?.[0]?.url || '';
-    $: popularity = track?.popularity ?? trackExtra?.popularity ?? null;
-
+    /* -------------------------
+       Color extraction (Vibrant)
+    ------------------------- */
     // Extract a color from the album cover using the swatch order configuration.
-    // This is now driven by `swatchOrder` so it's easy to change which swatch is preferred.
+    // Driven by `swatchOrder` so it's easy to change preferred swatches.
     async function computeGlow(url) {
         try {
             if (!url) {
                 glow = null;
+                glowSoft = null;
                 return;
             }
             const palette = await Vibrant.from(url).getPalette();
@@ -116,18 +125,47 @@
             if (sw?.rgb) {
                 const [r, g, b] = sw.rgb;
                 glow = `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, 1)`;
+                // softer, larger halo used by CSS (lower alpha)
+                glowSoft = `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, 1)`;
             } else if (sw?.hex) {
                 glow = sw.hex;
+                // fallback semi-transparent hex is not perfect; use rgba fallback above if possible
+                glowSoft = sw.hex;
             } else {
                 glow = null;
+                glowSoft = null;
             }
         } catch {
             glow = null;
+            glowSoft = null;
         }
     }
 
+    /* -------------------------
+       Lifecycle
+    ------------------------- */
+    onMount(async () => {
+        if (!browser) return;
+        authorized = hasToken();
+        if (authorized) {
+            await updateNowPlaying();
+            timer = setInterval(updateNowPlaying, 1000);
+        }
+    });
+
+    onDestroy(() => {
+        if (timer) clearInterval(timer);
+    });
+
+    /* -------------------------
+       Reactive declarations
+    ------------------------- */
+    $: track = nowPlaying?.item;
+    $: coverUrl = track?.album?.images?.[0]?.url || '';
+    $: popularity = track?.popularity ?? trackExtra?.popularity ?? null;
+
+    // Recompute glow when album art changes (only in browser)
     $: if (browser && coverUrl) {
-        // Recompute when the album art changes
         computeGlow(coverUrl);
     }
 </script>
@@ -147,12 +185,11 @@
     {#if error}<p class="err">{error}</p>{/if}
 
     {#if track}
-        <div class="layout" style={`--label:url(${coverUrl}); --glow:${glow ?? ''};`}>
+        <div class="layout" style={`--label:url(${coverUrl}); --glow:${glow ?? ''}; --glow-soft:${glowSoft ?? ''};`}>
             <!-- Left: track details -->
             <div class="left">
                 <h1 class="title">
                     {track.name}
-                    {#if track.explicit}<span class="badge">E</span>{/if}
                 </h1>
 
                 <div class="sub">
@@ -186,10 +223,7 @@
                     {#if coverUrl}
                         <img class="cover" src={coverUrl} alt="album art" width="520" height="520" />
                     {/if}
-                    <div
-                        class="vinyl {nowPlaying?.is_playing ? 'spinning' : ''}"
-                        aria-hidden="true"
-                    ></div>
+                    <div class="vinyl {nowPlaying?.is_playing ? 'spinning' : ''}" aria-hidden="true"></div>
                 </div>
             </div>
         </div>
@@ -198,7 +232,9 @@
         <div class="playing-zero" role="region" aria-label="Nothing is playing">
             <div class="zero-card">
                 <h2>Nothing is playing</h2>
-                <p class="lead">Start playback on any Spotify device to show album art and the vinyl visualizer.</p>
+                <p class="lead">
+                    Start playback on any Spotify device to show album art and the vinyl visualizer.
+                </p>
                 <p class="hint">Tip: open Spotify on your phone, laptop or web player and press play.</p>
             </div>
         </div>
@@ -212,9 +248,15 @@
     <div class="zero-state" role="region" aria-label="Sign in to Sonora">
         <div class="zero-card">
             <h2>You’re signed out</h2>
-            <p class="lead">Sign in with Spotify to show currently playing tracks, album art and the vinyl visualizer.</p>
+            <p class="lead">
+                Sign in with Spotify to show currently playing tracks, album art and the vinyl visualizer.
+            </p>
             <button class="btn" on:click={redirectToAuthCodeFlow}>Sign in with Spotify</button>
-            <p class="hint">No account? Visit <a href="https://spotify.com" target="_blank" rel="noopener noreferrer">spotify.com</a>.</p>
+            <p class="hint">
+                No account? Visit <a href="https://spotify.com" target="_blank" rel="noopener noreferrer"
+                    >spotify.com</a
+                >.
+            </p>
         </div>
     </div>
 {/if}
@@ -246,22 +288,11 @@
         line-height: 1;
         color: white;
     }
-    .badge {
-        display: inline-block;
-        font-size: 0.5em;
-        line-height: 1;
-        padding: 2px 6px;
-        margin-left: 8px;
-        border-radius: 4px;
-        background: #2b2d31;
-        border: 1px solid #4b4f57;
-        color: #cfd4dc;
-        vertical-align: middle;
-    }
+
     .sub {
         color: #9aa5b1;
         margin-top: 16px;
-        margin-bottom:16px;
+        margin-bottom: 16px;
         font-size: 18px;
     }
 
@@ -310,9 +341,9 @@
     /* use CSS variables for cover/vinyl so the inner label can be sized proportionally */
     .artwrap {
         /* default (desktop) sizes */
-        --cover-size: 520px;              /* cover is the reference */
-        --vinyl-ratio: 0.75;              /* vinyl = cover * ratio */
-        --label-ratio: 0.50;              /* <-- increased so label image is bigger */
+        --cover-size: 520px; /* cover is the reference */
+        --vinyl-ratio: 0.75; /* vinyl = cover * ratio */
+        --label-ratio: 0.5; /* <-- increased so label image is bigger */
         --vinyl-size: calc(var(--cover-size) * var(--vinyl-ratio));
 
         position: relative;
@@ -334,7 +365,7 @@
         object-fit: cover;
         border-radius: 4px;
         z-index: 2;
-        box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
     }
 
     /* Vinyl behind the cover, centered vertically */
@@ -354,7 +385,7 @@
         background-color: #0b0b0b;
         box-shadow:
             inset 0 0 90px rgba(255, 255, 255, 0.06),
-            0 0 140px var(--glow, rgba(255, 70, 70, 0.12));
+            0 0 240px var(--glow, rgba(255, 70, 70, 12));
         animation: spin 14s linear infinite;
         animation-play-state: paused;
         z-index: 1;
@@ -380,8 +411,12 @@
         animation-play-state: running;
     }
     @keyframes spin {
-        from { transform: translate(-50%, -50%) translateX(40%) rotate(0deg); }
-        to   { transform: translate(-50%, -50%) translateX(40%) rotate(360deg); }
+        from {
+            transform: translate(-50%, -50%) translateX(40%) rotate(0deg);
+        }
+        to {
+            transform: translate(-50%, -50%) translateX(40%) rotate(360deg);
+        }
     }
 
     /* status / misc */
@@ -453,7 +488,7 @@
         .artwrap {
             --cover-size: 320px;
             --vinyl-ratio: 0.75;
-            --label-ratio: 0.50; /* keep larger label on smaller screens as well */
+            --label-ratio: 0.5; /* keep larger label on smaller screens as well */
             width: var(--cover-size);
             height: var(--cover-size);
             margin: 0 auto;
@@ -469,21 +504,20 @@
             height: var(--vinyl-size);
         }
     }
-    @media (max-width:595px) {
-        
-        .right{
-          flex: 0 0 360px;
+    @media (max-width: 595px) {
+        .right {
+            flex: 0 0 360px;
         }
-        .left{
-          scale:85%;
+        .left {
+            scale: 85%;
         }
-        .title{
-          font-size:3em;
+        .title {
+            font-size: 3em;
         }
         .artwrap {
             --cover-size: 250px;
             --vinyl-ratio: 0.8;
-            --label-ratio: 0.50; /* keep larger label on small phones as well */
+            --label-ratio: 0.5; /* keep larger label on small phones as well */
             width: var(--cover-size);
             height: var(--cover-size);
         }
@@ -499,82 +533,57 @@
         }
     }
 
-    /* zero state (visible only when signed out) */
-.zero-state {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: calc(100vh - 160px);
-    padding: 40px 20px;
-    box-sizing: border-box;
-}
+    /* playing-zero (signed-in but nothing playing) and zero-state (signed-out)
+       Centered and made smaller / more responsive so it won't overflow. */
+    .playing-zero,
+    .zero-state {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: calc(100vh - 160px);
+        padding: 20px;
+        box-sizing: border-box;
+    }
 
-.zero-card {
-    width: 100%;
-    max-width: 720px;
-    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-    border: 1px solid rgba(255,255,255,0.04);
-    padding: 28px;
-    border-radius: 10px;
-    text-align: center;
-    color: #cfd4dc;
-    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
-}
+    /* reduce the card width so it shrinks earlier and avoids overflow */
+    .zero-card {
+        width: 100%;
+        max-width: 480px; /* default card cap */
+        width: min(95%, 480px); /* responsive cap to avoid overflow */
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
+        border: 1px solid rgba(255, 255, 255, 0.04);
+        padding: 18px;
+        border-radius: 10px;
+        text-align: center;
+        color: #cfd4dc;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    }
 
-.zero-card h2 {
-    margin: 0 0 10px;
-    font-size: 22px;
-    color: #ffffff;
-}
+    /* smaller typography & tighter padding on medium and small screens */
+    @media (max-width: 720px) {
+        .zero-card {
+            padding: 14px;
+            border-radius: 8px;
+            max-width: 420px;
+        }
+        .zero-card h2 {
+            font-size: 18px;
+        }
+        .zero-card .lead {
+            font-size: 13px;
+        }
+    }
 
-.zero-card .lead {
-    margin: 0 0 18px;
-    color: #9aa5b1;
-    line-height: 1.4;
-}
-
-.btn {
-    background: #1db954;
-    color: #061313;
-    border: none;
-    padding: 10px 16px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: 700;
-    font-size: 14px;
-}
-
-.btn:hover { filter: brightness(.95); }
-
-.zero-card .hint {
-    margin-top: 12px;
-    font-size: 13px;
-    color: #8e9aa6;
-}
-
-.zero-card a { color: #1db954; text-decoration: underline; }
-
-@media (max-width: 720px) {
-    .zero-card { padding: 20px; border-radius: 8px; }
-    .zero-card h2 { font-size: 20px; }
-    .zero-card .lead { font-size: 14px; }
-}
-
-/* playing-zero (signed-in but nothing playing) — reuses .zero-card styles */
-.playing-zero {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: calc(100vh - 160px);
-    padding: 40px 20px;
-    box-sizing: border-box;
-}
-.playing-zero .zero-card {
-    max-width: 640px;
-    background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));
-    border: 1px solid rgba(255,255,255,0.03);
-}
-/* ensure the vinyl is not rendered or visible when there's no track (defensive) */
-.right .artwrap .vinyl { display: block; }
-.playing-zero ~ .layout .right .artwrap .vinyl { display: none; }
+    @media (max-width: 420px) {
+        .zero-card {
+            max-width: 320px;
+            padding: 12px;
+        }
+        .zero-card h2 {
+            font-size: 16px;
+        }
+        .zero-card .lead {
+            font-size: 12px;
+        }
+    }
 </style>
